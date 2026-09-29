@@ -11,6 +11,9 @@ import qrcode
 import streamlit as st
 import streamlit.components.v1 as components
 
+import smtplib
+from email.message import EmailMessage
+
 st.set_page_config(page_title="배송 확인 시스템")
 
 DRIVERS = {
@@ -285,6 +288,50 @@ def make_qr(data):
     qr.save(buffer, format="PNG")
     return buffer.getvalue()
 
+def send_order_email(order_id, order, qr_url, qr_image):
+    """주문 등록 안내 메일 발송. 성공 시 (True, ""), 실패 시 (False, 사유)"""
+    try:
+        sender = st.secrets["email"]["sender"]
+        app_pw = st.secrets["email"]["app_password"]
+        host = st.secrets["email"].get("host", "smtp.gmail.com")
+        port = int(st.secrets["email"].get("port", 465))
+    except Exception:
+        return False, "이메일 설정(secrets)이 없습니다."
+
+    driver_name = DRIVERS[order["driver_id"]]["name"]
+
+    msg = EmailMessage()
+    msg["Subject"] = f"[배송 확인 시스템] 주문 {order_id} 등록 안내"
+    msg["From"] = sender
+    msg["To"] = order["buyer_email"]
+    msg.set_content(
+        f"{order['buyer']}님, 주문이 정상적으로 등록되었습니다.\n\n"
+        f"■ 주문번호: {order_id}\n"
+        f"■ 구매 물품: {order['product']}\n"
+        f"■ 수량: {order['quantity']}개\n"
+        f"■ 가격: {order['price']:,}원\n"
+        f"■ 배송 주소: {order['address']}\n"
+        f"■ 담당 기사: {driver_name}\n"
+        f"■ 배송 상태: {order['status']}\n"
+        f"■ 정보 공개시간: 배송 완료 후 {fmt_minutes(order['expire_minutes'])}\n\n"
+        f"아래 링크에서 주문을 조회할 수 있습니다.\n{qr_url}\n\n"
+        f"※ 비밀번호는 주문 시 설정하신 값입니다. 잊으셨다면 "
+        f"'주문번호 & 비밀번호 찾기'를 이용해주세요."
+    )
+    msg.add_attachment(
+        qr_image,
+        maintype="image",
+        subtype="png",
+        filename=f"{order_id}_QR_link.png",
+    )
+
+    try:
+        with smtplib.SMTP_SSL(host, port, timeout=15) as server:
+            server.login(sender, app_pw)
+            server.send_message(msg)
+        return True, ""
+    except Exception as e:
+        return False, str(e)
 
 def build_qr_text(order_id, order):
     return (
@@ -521,6 +568,18 @@ elif st.session_state.page == "seller":
             }
 
             st.success("주문과 QR코드 2개가 생성되었습니다.")
+
+            with st.spinner("구매자 이메일로 안내 메일을 보내는 중..."):
+                ok, err = send_order_email(
+                    order_id,
+                    ORDERS[order_id],
+                    qr_url,
+                    st.session_state.generated["image"],
+                )
+            if ok:
+                st.success(f"{buyer_email} 로 안내 메일을 보냈습니다.")
+            else:
+                st.warning(f"주문은 등록되었지만 메일 발송에 실패했습니다: {err}")
 
     generated = st.session_state.generated
 

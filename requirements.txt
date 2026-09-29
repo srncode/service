@@ -1,0 +1,6 @@
+streamlit
+qrcode[pil]
+opencv-python-headless
+numpy
+streamlit-webrtc
+av

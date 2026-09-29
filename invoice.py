@@ -516,7 +516,7 @@ elif st.session_state.page == "seller":
         )
         app_url = st.text_input(
             "QR생성용 링크(입력된 정보를 포함해요)",
-            value="https://additionalservice.streamlit.app",
+            value="https://service.streamlit.app",
         )
         submitted = st.form_submit_button(
             "주문 등록 및 QR코드 생성", use_container_width=True

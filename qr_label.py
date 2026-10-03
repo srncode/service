@@ -5,6 +5,8 @@ from pathlib import Path
 import qrcode
 from PIL import Image, ImageDraw, ImageFont
 
+BASE = Path(__file__).resolve().parent
+
 # ───────────── 폰트 ─────────────
 # (경로, ttc 인덱스) 순서대로 시도. Streamlit Cloud는 packages.txt 에 fonts-nanum 추가
 _FONT_CANDIDATES = [
@@ -28,12 +30,33 @@ _BLACK_CANDIDATES = [
 def _font(size, black=False):
     cands = (_BLACK_CANDIDATES + _FONT_CANDIDATES) if black else _FONT_CANDIDATES
     for path, idx in cands:
-        if Path(path).exists():
+        p = Path(path) if Path(path).is_absolute() else BASE / path
+        if p.exists():
             try:
-                return ImageFont.truetype(path, size, index=idx)
+                return ImageFont.truetype(str(p), size, index=idx)
             except Exception:
                 continue
     return ImageFont.load_default()
+
+
+# ───────────── 이미지 에셋 (있으면 사용, 없으면 직접 그린 도형으로 대체) ─────────────
+def _asset(name, width):
+    """assets/<name> 을 불러와 내용 영역만 잘라 width 로 키움. 없으면 None."""
+    p = BASE / "assets" / name
+    if not p.exists():
+        return None
+    im = Image.open(p).convert("RGBA")
+    bg = Image.new("RGBA", im.size, "white")
+    bg.alpha_composite(im)
+    g = bg.convert("L")
+    box = g.point(lambda v: 255 if v < 200 else 0).getbbox()
+    if box:
+        g = g.crop(box)
+    h = round(g.height * width / g.width)
+    g = g.resize((width, h), Image.LANCZOS)
+    # 확대로 흐려진 가장자리를 또렷하게 (명암 대비 강화)
+    g = g.point(lambda v: 0 if v < 90 else 255 if v > 170 else int((v - 90) * 255 / 80))
+    return g.convert("RGB")
 
 
 # ───────────── 지역 구분코드 (임의 규칙) ─────────────
@@ -168,26 +191,30 @@ def make_label(order, qr_url, phone="010-123-4567", center="1516-1718"):
     d.rounded_rectangle([P(22), P(22), P(1100), P(1358)], radius=P(42), outline=BK, width=P(5))
 
     # ── 로고 ──
-    lf = _font(P(108), True)
-    x = P(150)
-    base = P(166)
-    for ch in "QRL":
-        d.text((x, base), ch, font=lf, fill=BK, anchor="ls")
-        x += d.textlength(ch, font=lf) + P(2)
-    # 자물쇠 O
-    ocx, ocy, orad = x + P(36), P(124), P(38)
-    d.ellipse([ocx - orad, ocy - orad, ocx + orad, ocy + orad], outline=BK, width=P(13))
-    _lock(d, ocx, ocy + P(3), P(26), BK, "white")
-    x = ocx + orad + P(4)
-    for ch in "CK":
-        d.text((x, base), ch, font=lf, fill=BK, anchor="ls")
-        x += d.textlength(ch, font=lf) + P(2)
-    text((668, 112), "택배", 70, black=True)
+    logo = _asset("logo.png", P(800))
+    if logo:
+        img.paste(logo, (P(165), P(62)))
+    else:
+        lf = _font(P(108), True)
+        x = P(150)
+        base = P(166)
+        for ch in "QRL":
+            d.text((x, base), ch, font=lf, fill=BK, anchor="ls")
+            x += d.textlength(ch, font=lf) + P(2)
+        # 자물쇠 O
+        ocx, ocy, orad = x + P(36), P(124), P(38)
+        d.ellipse([ocx - orad, ocy - orad, ocx + orad, ocy + orad], outline=BK, width=P(13))
+        _lock(d, ocx, ocy + P(3), P(26), BK, "white")
+        x = ocx + orad + P(4)
+        for ch in "CK":
+            d.text((x, base), ch, font=lf, fill=BK, anchor="ls")
+            x += d.textlength(ch, font=lf) + P(2)
+        text((668, 112), "택배", 70, black=True)
 
-    # 상자 아이콘 + 반짝임
-    _cube(d, P(898), P(135), P(62), BK, "white", P(6), lock=True)
-    for (x1, y1, x2, y2) in [(818, 76, 832, 88), (836, 56, 842, 70), (856, 52, 858, 64)]:
-        d.line([(P(x1), P(y1)), (P(x2), P(y2))], fill=BK, width=P(4))
+        # 상자 아이콘 + 반짝임
+        _cube(d, P(898), P(135), P(62), BK, "white", P(6), lock=True)
+        for (x1, y1, x2, y2) in [(818, 76, 832, 88), (836, 56, 842, 70), (856, 52, 858, 64)]:
+            d.line([(P(x1), P(y1)), (P(x2), P(y2))], fill=BK, width=P(4))
 
     # ── 구역 코드 ──
     area_txt, code = zone_label(order["region"], order["address"])
@@ -221,17 +248,23 @@ def make_label(order, qr_url, phone="010-123-4567", center="1516-1718"):
         d.ellipse([P(80), P(cy_ - 9), P(98), P(cy_ + 9)], fill=BK)
         text((118, cy_), label, 48, anchor="lm")
 
-    d.line([(P(107), P(1047)), (P(1015), P(1047))], fill=(150, 150, 150), width=P(2))
+    # ── 취급 아이콘 4개 (구분선 포함 이미지) ──
+    icons = _asset("icons.png", P(908))
+    if icons:
+        img.paste(icons, (P(107), P(1047)))
+        d.line([(P(107), P(1047)), (P(1015), P(1047))], fill=(150, 150, 150), width=P(2))
+    else:
+        d.line([(P(107), P(1047)), (P(1015), P(1047))], fill=(150, 150, 150), width=P(2))
 
-    # ── 취급 아이콘 4개 ──
-    k = S * 1.0
-    items = [(218, "취급주의", _icon_handle), (440, "파손주의", _icon_glass),
-             (665, "습기주의", _icon_umbrella), (892, "세워주세요", _icon_up)]
-    for cx_, name, fn in items:
-        fn(d, P(cx_), P(1118), k, BK, "white")
-        text((cx_, 1213), name, 38, anchor="mm")
-    for sx in (334, 556, 778):
-        d.line([(P(sx), P(1062)), (P(sx), P(1243))], fill=(60, 60, 60), width=P(3))
+        # ── 취급 아이콘 4개 ──
+        k = S * 1.0
+        items = [(218, "취급주의", _icon_handle), (440, "파손주의", _icon_glass),
+                 (665, "습기주의", _icon_umbrella), (892, "세워주세요", _icon_up)]
+        for cx_, name, fn in items:
+            fn(d, P(cx_), P(1118), k, BK, "white")
+            text((cx_, 1213), name, 38, anchor="mm")
+        for sx in (334, 556, 778):
+            d.line([(P(sx), P(1062)), (P(sx), P(1243))], fill=(60, 60, 60), width=P(3))
 
     # ── 하단 배너 ──
     d.rounded_rectangle([P(60), P(1265), P(1062), P(1330)], radius=P(18), fill=GR)

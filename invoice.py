@@ -16,6 +16,8 @@ from email.message import EmailMessage
 
 import re
 
+from qr_label import make_label
+
 EMAIL_RE = re.compile(r"^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$")
 
 st.set_page_config(page_title="배송 확인 시스템")
@@ -580,11 +582,13 @@ elif st.session_state.page == "seller":
             }
 
             qr_url = f"{app_url}?order={quote(order_id)}&token={quote(token)}"
-
+            ORDERS[order_id]["qr_url"] = qr_url          # 나중에 다시 출력할 수 있도록 저장
+            
             st.session_state.generated = {
                 "order_id": order_id,
                 "url": qr_url,
                 "image": make_qr(qr_url),
+                "label": make_label(ORDERS[order_id], qr_url),   # 추가
             }
 
             st.success("주문과 QR코드가 생성되었습니다.")
@@ -631,6 +635,16 @@ elif st.session_state.page == "seller":
                 mime="image/png",
                 use_container_width=True,
             )
+
+            if generated.get("label"):
+                st.image(generated["label"], caption="송장 라벨", use_container_width=True)
+                st.download_button(
+                    "송장 라벨 저장",
+                    generated["label"],
+                    file_name=f'{generated["order_id"]}_LABEL.png',
+                    mime="image/png",
+                    use_container_width=True,
+                )
 
             with st.expander("QR코드 접속 주소"):
                 st.code(generated["url"])
@@ -696,6 +710,15 @@ elif st.session_state.page == "seller_manage":
                 f'{order["driver_id"]} ({DRIVERS[order["driver_id"]]["name"]})',
             )
         show_extra(order)
+        if order.get("qr_url"):
+            st.download_button(
+                "송장 라벨 다시 받기",
+                make_label(order, order["qr_url"]),
+                file_name=f"{oid}_LABEL.png",
+                mime="image/png",
+                key=f"label_{oid}",
+                use_container_width=True,
+            )
         st.write("**상태:**", status_of(order))
 
         if order["status"] == "배송준비":

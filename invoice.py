@@ -18,6 +18,9 @@ import re
 
 from qr_label import make_label
 
+import base64
+import json
+
 EMAIL_RE = re.compile(r"^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$")
 
 st.set_page_config(page_title="배송 확인 시스템")
@@ -413,6 +416,42 @@ def send_order_email(order_id, order, qr_url, qr_image):
 
     return smtp_send(msg, sender, app_pw, host, port)
 
+def print_button(image_bytes, label="🖨 송장 인쇄", width_mm=100, ratio=1400 / 1122, key="print"):
+    """라벨 이미지를 브라우저 인쇄 창으로 바로 출력하는 버튼."""
+    b64 = base64.b64encode(image_bytes).decode()
+    height_mm = round(width_mm * ratio, 1)
+
+    page_html = (
+        "<html><head><style>"
+        f"@page{{size:{width_mm}mm {height_mm}mm;margin:0}}"
+        "html,body{margin:0;padding:0}"
+        f"img{{width:{width_mm}mm;height:{height_mm}mm;display:block}}"
+        "</style></head><body>"
+        f'<img id="i" src="data:image/png;base64,{b64}">'
+        "</body></html>"
+    )
+
+    components.html(
+        f"""
+        <button id="b" style="width:100%;padding:10px;font-size:16px;cursor:pointer;
+            border:1px solid #ccc;border-radius:8px;background:#fff;">{label}</button>
+        <script>
+          const html = {json.dumps(page_html)};
+          document.getElementById("b").onclick = () => {{
+            const f = document.createElement("iframe");
+            f.style.cssText = "position:fixed;right:0;bottom:0;width:0;height:0;border:0";
+            document.body.appendChild(f);
+            const d = f.contentWindow.document;
+            d.open(); d.write(html); d.close();
+            const img = d.getElementById("i");
+            const go = () => {{ f.contentWindow.focus(); f.contentWindow.print(); }};
+            if (img.complete) go(); else img.onload = go;
+          }};
+        </script>
+        """,
+        height=60,
+    )
+
 if "page" not in st.session_state:
     st.session_state.page = "menu"
 if "driver" not in st.session_state:
@@ -638,6 +677,7 @@ elif st.session_state.page == "seller":
 
             if generated.get("label"):
                 st.image(generated["label"], caption="송장 라벨", use_container_width=True)
+                print_button(generated["label"])          # 바로 인쇄
                 st.download_button(
                     "송장 라벨 저장",
                     generated["label"],

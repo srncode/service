@@ -191,7 +191,7 @@ def make_label(order, qr_url, phone="010-123-4567", center="1516-1718"):
     d.rounded_rectangle([P(22), P(22), P(1100), P(1358)], radius=P(42), outline=BK, width=P(5))
 
     # ── 로고 ──
-    logo = _asset("logo.png", P(800))
+    logo = _asset("assets/logo.png", P(800))
     if logo:
         img.paste(logo, (P(165), P(62)))
     else:
@@ -249,7 +249,7 @@ def make_label(order, qr_url, phone="010-123-4567", center="1516-1718"):
         text((118, cy_), label, 48, anchor="lm")
 
     # ── 취급 아이콘 4개 (구분선 포함 이미지) ──
-    icons = _asset("icons.png", P(908))
+    icons = _asset("assets/icons.png", P(908))
     if icons:
         img.paste(icons, (P(107), P(1047)))
         d.line([(P(107), P(1047)), (P(1015), P(1047))], fill=(150, 150, 150), width=P(2))
